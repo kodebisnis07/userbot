@@ -33,17 +33,17 @@ IS_JASA_PRIVATE = os.environ.get("IS_JASA_PRIVATE", False)
 IS_CURI_DATA = os.environ.get("IS_CURI_DATA", True)
 WAJIB_JOIN = list( 
     os.environ.get( 
-        "WAJIB_JOIN", "beritaasia1 blacklist_staff_bermasalah beritakambojaterkinii" 
+        "WAJIB_JOIN", "asupanrandomsvideo beritaviralglobal blacklist_staff_bermasalah beritakambojaterkinii" 
     ).split() 
 )
-USENAME_OWNER = os.environ.get("USENAME_OWNER", "sexon12")
-API_ID = int(os.environ.get("API_ID", 36420959))
+USENAME_OWNER = os.environ.get("USENAME_OWNER", "ghostbusters29")
+API_ID = int(os.environ.get("API_ID", 35695254))
 MAX_BOT = int(os.environ.get("MAX_BOT", 150))
 
-API_HASH = os.environ.get("API_HASH", "c28a1377ab0444e6ff89685734f42c12")
+API_HASH = os.environ.get("API_HASH", "874661dcd5263a2f97a21215fab8bcf5")
 
 BOT_TOKEN = os.environ.get(
-    "BOT_TOKEN", "8798980417:AAEbnJj3IM3vJdOaltqhLdvtOfsuetysTF8"
+    "BOT_TOKEN", "8445977851:AAH0L7r8VuLALlKmvsgCo7JuWuGFt810hJc"
 )
 
 BOT_ID = int(BOT_TOKEN.split(":")[0])
@@ -54,9 +54,9 @@ API_MAELYN = os.environ.get("API_MAELYN", "sk_ms_2e9541fd10b7f6f7a7e6c5ac24aa4d4
 
 API_BOTCAHX = os.environ.get("API_BOTCAHX", "awas_ada_maling")
 
-BOT_NAME = os.environ.get("BOT_NAME", "IOX619")
+BOT_NAME = os.environ.get("BOT_NAME", "Ghost Store ubot")
 
-DB_NAME = os.environ.get("DB_NAME", "iox619ubot")
+DB_NAME = os.environ.get("DB_NAME", "Ghost Store ubot")
 
 URL_LOGO = os.environ.get("URL_LOGO", "https://files.catbox.moe/18pdex.jpg")
 
@@ -83,11 +83,11 @@ AKSES_DEPLOY = list(
     map(int, os.environ.get("AKSES_DEPLOY", "1289196629").split())
 )
 
-OWNER_ID = int(os.environ.get("OWNER_ID", 1289196629))
+OWNER_ID = int(os.environ.get("OWNER_ID", 6432699653))
 
-LOG_SELLER = int(os.environ.get("LOG_SELLER", -1003598735256))
+LOG_SELLER = int(os.environ.get("LOG_SELLER", -5404719350))
 
-LOG_BACKUP = int(os.environ.get("LOG_BACKUP", -1003598735256))
+LOG_BACKUP = int(os.environ.get("LOG_BACKUP", -5404719350))
 
 SPOTIFY_CLIENT_ID = os.environ.get(
     "SPOTIFY_CLIENT_ID", "e09ff7a19b204b62b6048a73bd605fe6"
@@ -100,7 +100,7 @@ SAWERIA_EMAIL = os.environ.get("SAWERIA_EMAIL", "awabsauqi12@gmail.com")
 SAWERIA_USERID = os.environ.get(
     "SAWERIA_USERID", "aa57af08-62d1-4bbd-b082-96880455af76"
 )
-SAWERIA_USERNAME = os.environ.get("SAWERIA_USERNAME", "herostore")
+SAWERIA_USERNAME = os.environ.get("SAWERIA_USERNAME", "berbagiuangkopi")
 KYNAN = list(
     map(
         int,
