@@ -1,26 +1,20 @@
-import asyncio
-import os
-import traceback
 from datetime import datetime
 
 import pytz
 from dateutil.relativedelta import relativedelta
-from pyrogram.helpers import ikb, kb
+from pyrogram.helpers import ikb
 from pyrogram.types import ReplyKeyboardRemove
 
-from clients import bot
-from config import (AKSES_DEPLOY, API_MAELYN, IS_JASA_PRIVATE, LOG_SELLER,
-                    OWNER_ID, SAWERIA_EMAIL, SAWERIA_USERID)
+from config import IS_JASA_PRIVATE, OWNER_ID
 from database import dB
-from helpers import ButtonUtils, Emoji, Message, Tools
-from logs import logger
-
-last_generated_time = {}
-
+from helpers import ButtonUtils, Emoji, Message
 
 transactions = {}
-
 waktu_jkt = pytz.timezone("Asia/Jakarta")
+
+BANK_NAME = "SeaBank"
+BANK_ACCOUNT = "901291135300"
+BANK_ACCOUNT_NAME = "Saiful Anwar"
 
 
 async def add_transaction(user_id, month, plan):
@@ -32,6 +26,21 @@ async def add_transaction(user_id, month, plan):
         await dB.set_expired_date(user_id, expired)
 
 
+def bank_payment_buttons():
+    return ikb(
+        [
+            [
+                (
+                    "✅ Kirim Bukti Transfer",
+                    f"tg://openmessage?user_id={OWNER_ID}",
+                    "url",
+                )
+            ],
+            [("❌ Cancel", "batal_payment")],
+        ]
+    )
+
+
 async def user_aggre(client, callback_query):
     await callback_query.answer()
     user_id = callback_query.from_user.id
@@ -41,9 +50,11 @@ async def user_aggre(client, callback_query):
     if IS_JASA_PRIVATE:
         await del_.delete()
         await callback_query.message.delete()
-        reply_markup = ikb([[("OWNER", f"tg://openmessage?user_id={OWNER_ID}", "url")]])
+        reply_markup = ikb(
+            [[("OWNER", f"tg://openmessage?user_id={OWNER_ID}", "url")]]
+        )
         return await client.send_message(
-            user_id, f"<b>Please contact OWNER below</b>", reply_markup=reply_markup
+            user_id, "<b>Please contact OWNER below</b>", reply_markup=reply_markup
         )
     await del_.delete()
     await callback_query.message.delete()
@@ -67,6 +78,8 @@ async def chose_plan(client, callback_query):
         PLAN = "Basic"
     elif plan == "is_pro":
         PLAN = "Pro"
+    else:
+        PLAN = plan.title()
     buttons = ButtonUtils.plus_minus(0, 0, plan)
     return await client.send_message(
         user_id,
@@ -86,11 +99,12 @@ async def kurang_tambah(client, callback_query):
         HARGA = 20000
     elif PLAN == "is_pro":
         HARGA = 30000
+    else:
+        return
     try:
         if QUERY == "kurang":
             if BULAN > 1:
                 BULAN -= 1
-                TOTAL_HARGA = HARGA * BULAN
         elif QUERY == "tambah":
             if BULAN < 12:
                 BULAN += 1
@@ -110,7 +124,7 @@ async def kurang_tambah(client, callback_query):
             PLANNING = "Lite"
         elif PLAN == "basic":
             PLANNING = "Basic"
-        elif PLAN == "is_pro":
+        else:
             PLANNING = "Pro"
         await callback_query.edit_message_text(
             Message.TEXT_PAYMENT(HARGA, TOTAL_HARGA, BULAN, PLANNING, DISKON),
@@ -126,11 +140,6 @@ async def cancel_payment(client, callback_query):
     await callback_query.answer()
 
     if user_id in transactions:
-        qris_path = transactions[user_id]["qris_path"]
-
-        if os.path.exists(qris_path):
-            os.remove(qris_path)
-
         try:
             await client.delete_messages(
                 chat_id=callback_query.message.chat.id,
@@ -141,12 +150,13 @@ async def cancel_payment(client, callback_query):
 
         del transactions[user_id]
 
-        await callback_query.message.reply(
+        await client.send_message(
+            user_id,
             "**__📑 Transaksi Berhasil Dibatalkan.__**",
             reply_markup=ButtonUtils.start_menu(user_id),
         )
     else:
-        await callback_query.message.reply("**__❌ Tidak Ada Transaksi Yang Aktif__**")
+        await client.send_message(user_id, "**__❌ Tidak Ada Transaksi Yang Aktif__**")
 
 
 async def confirm_pay(client, callback_query):
@@ -155,158 +165,66 @@ async def confirm_pay(client, callback_query):
     month = int(data[1])
     amount = int(data[2])
     plan = str(data[3])
+
     if plan == "lite":
         PLAN = "Lite"
     elif plan == "basic":
         PLAN = "Basic"
     elif plan == "is_pro":
         PLAN = "Pro"
+    else:
+        PLAN = plan.title()
+
     user_id = callback_query.from_user.id
     await callback_query.message.delete()
 
     if amount == 0:
         return await client.send_message(user_id, "<b>The price cannot be 0.</b>")
     if month == 0:
-        return await client.send_message(user_id, "<b>The mont cannot be 0.</b>")
+        return await client.send_message(user_id, "<b>The month cannot be 0.</b>")
 
-    try:
-        if user_id in transactions:
-            return await callback_query.message.reply(
-                "**__📑 You still have a pending transaction.__**",
-                reply_markup=ikb([[("❌ Cancel", "batal_payment")]]),
-            )
-
-        loading = await callback_query.message.reply(
-            "<b><i>⏳ Generating QR Code...</i></b>"
-        )
-        item_name = f"Sewa Userbot {PLAN} {month} Months"
-        url = "https://api.maelyn.eu/api/payment/saweria/create/transaction"
-        headers = {
-            "Content-Type": "application/json",
-            "x-maelyn-auth": API_MAELYN,
-        }
-        payload = {
-            "user_id": SAWERIA_USERID,
-            "amount": amount,
-            "name": bot.fullname,
-            "email": SAWERIA_EMAIL,
-            "msg": item_name,
-        }
-        r = await Tools.fetch.post(url, headers=headers, json=payload)
-        if r.status_code != 200:
-            await loading.delete()
-            return await client.send_message(user_id, f"**Please try again later...**")
-        anu = r.json()
-        sdata = anu.get("payment").get('data')
-        
-        if not sdata:
-            await loading.delete()
-            return await client.send_message(user_id, f"**Please try again later...**")
-            
-        hasil_amount = sdata.get("amount")
-        hasil_qr = sdata.get("qr_string")
-        if not hasil_qr:
-            await loading.delete()
-            return await client.send_message(user_id, f"**Gagal mendapatkan data QR Code dari server. Silakan coba lagi.**")         
-        hasil_idpayment = sdata.get("id")
-        qris_path = f"qris_{user_id}_{hasil_amount}.png"
-        Tools.create_qrscan(hasil_qr, str(hasil_amount), qris_path)        
-        now = datetime.now(waktu_jkt)
-        caption_text = f"""<b>📃「 Waiting Payment 」</b>
-
-<blockquote expandable><b><i>📦 Item: `{item_name}`
-💵 Price: `{Message.format_rupiah(amount)}`
-💰 Total Payment: `{Message.format_rupiah(hasil_amount)}`
-🛒 Plan: {PLAN} 
-
-Please scan the QRIS above to make your payment.
-If you have issues, contact <a href='tg://user?id={OWNER_ID}'>ADMIN</a>.
-Click the ❌ Cancel button below to cancel the transaction.</i></b></blockquote>
-
-<blockquote>© Auto Payment @{client.me.username}</blockquote>"""
-
-        sent_msg = await client.send_photo(
+    if user_id in transactions:
+        return await client.send_message(
             user_id,
-            qris_path,
-            caption=caption_text,
+            "**__📑 You still have a pending transaction.__**",
             reply_markup=ikb([[("❌ Cancel", "batal_payment")]]),
         )
 
-        await loading.delete()
-        if os.path.exists(qris_path):
-            os.remove(qris_path)
+    item_name = f"Sewa Userbot {PLAN} {month} Months"
+    now = datetime.now(waktu_jkt)
+    payment_text = f"""
+<b>🏦「 BANK TRANSFER 」</b>
 
-        transactions[user_id] = {
-            "qris_path": qris_path,
-            "message_id": sent_msg.id,
-            "expire_time": sdata.get('expired_at'),
-            "done": False,
-        }
-      
-        while True:
-            await asyncio.sleep(1)
-            trans = transactions.get(user_id)
-            trans = transactions.get(user_id)
-            if not trans or trans["done"]:
-                break
-            try:
-                url = "https://api.maelyn.eu/api/payment/saweria/check/transaction"
-                headers = {"x-maelyn-auth": API_MAELYN}
-                payload = {"user_id": SAWERIA_USERID, "payment_id": hasil_idpayment}
-                response = await Tools.fetch.get(url, headers=headers, params=payload)
-                is_paid = response.json().get("payment").get('data')
-                print(is_paid)
-                if is_paid and not trans["done"]:
-                    if is_paid["status"] == "PAID":
-                        trans["done"] = True
-                        await callback_query.message.reply(
-                            "<b><i>Payment received, processing your order...</i></b>"
-                        )
-                        await client.send_message(
-                            LOG_SELLER,
-                            f"""
-<b>📝「 Payment Successfully 」</b>
+<blockquote expandable><b><i>📦 Item: <code>{item_name}</code>
+💵 Total Payment: <code>{Message.format_rupiah(amount)}</code>
+🛒 Plan: {PLAN}
 
-<blockquote expandable><b><i>👤 User Name: `{callback_query.from_user.first_name}`
-🆔 User ID: `{callback_query.from_user.id}`
-📦 Item: `{item_name}`
-💵 Price: `{Message.format_rupiah(amount)}`
-📅 Date: `{now.strftime('%d-%m-%Y')}`
-⏰ Time: `{now.strftime('%H:%M')}`</i></b></blockquote>
+🏦 Bank: <code>{BANK_NAME}</code>
+💳 No. Rekening: <code>{BANK_ACCOUNT}</code>
+👤 A/N: <code>{BANK_ACCOUNT_NAME}</code>
 
-<blockquote>© Auto Payment @{client.me.username}</blockquote>
-""",
-                        )
-                        await client.delete_messages(
-                            chat_id=callback_query.message.chat.id,
-                            message_ids=transactions[user_id]["message_id"],
-                        )
-                        del transactions[user_id]
+Silakan transfer sesuai nominal di atas.
+Setelah transfer, klik tombol ✅ Kirim Bukti Transfer dan kirim bukti pembayaran ke ADMIN.
+Aktivasi dilakukan setelah ADMIN memverifikasi pembayaran.</i></b></blockquote>
 
-                        await add_transaction(user_id, month, plan)
-                        if user_id not in AKSES_DEPLOY:
-                            AKSES_DEPLOY.append(user_id)
-                        await client.send_message(
-                            user_id,
-                            "<b><i>✅ Payment successful.\nClick the button below to create your Userbot.</i></b>",
-                            reply_markup=kb(
-                                [["✨ Mulai Buat Userbot"]],
-                                resize_keyboard=True,
-                                one_time_keyboard=True,
-                            ),
-                        )
-                        break
+<blockquote>📅 {now.strftime('%d-%m-%Y %H:%M')}</blockquote>
+"""
 
-            except Exception as err:
-                logger.error(f"ERROR: {traceback.format_exc()}")
-                if "Transaction ID not found" in str(err):
-                    return await client.send_message(user_id, f"Please try again.")
+    sent_msg = await client.send_message(
+        user_id,
+        payment_text,
+        reply_markup=bank_payment_buttons(),
+        disable_web_page_preview=True,
+    )
 
-    except Exception:
-        logger.error(f"ERROR: {traceback.format_exc()}")
-        return await client.send_message(
-            user_id, "<b>An error occurred, please try again.</b>"
-        )
+    transactions[user_id] = {
+        "message_id": sent_msg.id,
+        "done": False,
+        "amount": amount,
+        "month": month,
+        "plan": plan,
+        "item_name": item_name,
+    }
 
 
 async def qris_cmd(client, message):
@@ -317,14 +235,6 @@ async def qris_cmd(client, message):
     if user_id != OWNER_ID:
         return await message.reply(
             f"{em.gagal}**Sorry, this feature is only for the Owner.**"
-        )
-
-    if user_id in transactions:
-        return await message.reply(
-            f"""
-<b><i>{em.gagal}You still have an ongoing transaction.
-{em.warn}You can cancel it using <code>.cancelpay</code>.</i></b>
-"""
         )
 
     try:
@@ -342,108 +252,25 @@ async def qris_cmd(client, message):
                 f"{em.gagal}**Incorrect format. Use:** <code>.pay amount, description</code>"
             )
 
-        loading = await message.reply(f"{em.proses}**Prosesing..**")
-        url = "https://api.maelyn.eu/api/payment/saweria/create/transaction"
-        headers = {
-            "Content-Type": "application/json",
-            "x-maelyn-auth": API_MAELYN,
-        }
-        payload = {
-            "user_id": SAWERIA_USERID,
-            "amount": amount,
-            "name": bot.fullname,
-            "email": SAWERIA_EMAIL,
-            "msg": description,
-        }
-        r = await Tools.fetch.post(url, headers=headers, json=payload)
-        if r.status_code != 200:
-            await loading.delete()
-            return await client.send_message(user_id, f"**Please try again later...**")
-        dt = r.json()["payment"]
-        data = dt.get('data')
-        if not data:
-            await loading.delete()
-            return await client.send_message(user_id, f"**Please try again later...**")
-        hasil_amount = data["amount"]
-        hasil_qr = data["qr_string"]
-        hasil_idpayment = data["id"]
-        qris_path = f"qris_{user_id}_{hasil_amount}.png"
-        Tools.create_qrscan(hasil_qr, str(hasil_amount), qris_path)
+        if amount <= 0:
+            return await message.reply(f"{em.gagal}**Amount must be greater than 0.**")
+
         now = datetime.now(waktu_jkt)
-        sent_message = await message.reply_photo(
-            qris_path,
-            caption=(
-                f"""
-<b>📃「 Waiting Payment 」</b>
+        payment_text = f"""
+<b>🏦「 BANK TRANSFER 」</b>
 
-<blockquote expandable><b><i>{em.profil}Item: `{description}`
-{em.net}Price: `{Message.format_rupiah(amount)}`
-{em.speed}Total Payment: `{Message.format_rupiah(hasil_amount)}`
+<blockquote expandable><b><i>{em.profil}Item: <code>{description}</code>
+{em.net}Total Payment: <code>{Message.format_rupiah(amount)}</code>
 
-Please scan the QRIS above to complete the payment.
-If you encounter any issues, contact <a href='tg://user?id={OWNER_ID}'>ADMIN</a>
-Type `.cancelpay` to cancel the transaction.</i></b></blockquote>
+🏦 Bank: <code>{BANK_NAME}</code>
+💳 No. Rekening: <code>{BANK_ACCOUNT}</code>
+👤 A/N: <code>{BANK_ACCOUNT_NAME}</code>
 
-<blockquote>© Auto Payment @{bot.me.username}</blockquote>
+Silakan transfer sesuai nominal di atas dan kirim bukti pembayaran ke ADMIN.</i></b></blockquote>
+
+<blockquote>📅 {now.strftime('%d-%m-%Y %H:%M')}</blockquote>
 """
-            ),
-        )
-        await loading.delete()
-
-        if os.path.exists(qris_path):
-            os.remove(qris_path)
-
-        transactions[user_id] = {
-            "qris_path": qris_path,
-            "expire_time": hasil_expired,
-            "message_id": sent_message.id,
-            "done": False,
-        }
-
-        while True:
-            await asyncio.sleep(1)
-            trans = transactions.get(user_id)
-            if not trans or trans["done"]:
-                break
-            if datetime.now() > trans["expire_time"]:
-                if not trans["done"]:
-                    await client.send_message(
-                        user_id, "<b><i>Payment canceled due to timeout.</i></b>"
-                    )
-                    await client.delete_messages(
-                        chat_id=message.chat.id,
-                        message_ids=trans["message_id"],
-                    )
-                    del transactions[user_id]
-                break
-            try:
-                url = "https://api.maelyn.eu/api/payment/saweria/check/transaction"
-                headers = {"x-maelyn-auth": API_MAELYN}
-                payload = {"user_id": SAWERIA_USERID, "payment_id": hasil_idpayment}
-                response = await Tools.fetch.get(url, headers=headers, json=payload)
-                is_paid = response.json().get("payment").get('data')
-                if is_paid and not trans["done"]:
-                    if is_paid["status"] == "PAID":
-                        trans["done"] = True
-                        await message.reply(
-                            f"""
-<blockquote><b><i>{em.sukses}Payment received successfully!
-
-{em.profil}Item: `{description}`
-{em.net}Price: `{Message.format_rupiah(amount)}`
-{em.msg}Date: `{now.strftime('%d-%m-%Y')}`
-{em.speed}Total Paid: `{Message.format_rupiah(hasil_amount)}`</i></b></blockquote>
-"""
-                        )
-                        await client.delete_messages(
-                            chat_id=message.chat.id,
-                            message_ids=transactions[user_id]["message_id"],
-                        )
-                        del transactions[user_id]
-                        return
-
-            except Exception as e:
-                print(f"Error while checking payment: {e}")
+        return await message.reply(payment_text)
 
     except ValueError:
         return await message.reply(
@@ -462,15 +289,18 @@ async def cancelpay_cmd(client, message):
         )
 
     if user_id in transactions:
-        await client.delete_messages(
-            chat_id=message.chat.id, message_ids=transactions[user_id]["message_id"]
-        )
+        try:
+            await client.delete_messages(
+                chat_id=message.chat.id,
+                message_ids=transactions[user_id]["message_id"],
+            )
+        except Exception:
+            pass
         del transactions[user_id]
 
         return await message.reply(
             f"{em.sukses}**Transaction has been successfully canceled.**"
         )
-    else:
-        return await message.reply(
-            f"{em.warn}**There is no active transaction to cancel.**"
-        )
+    return await message.reply(
+        f"{em.warn}**There is no active transaction to cancel.**"
+    )
